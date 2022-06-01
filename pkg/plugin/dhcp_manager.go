@@ -255,16 +255,19 @@ func (m *dhcpManager) Start(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to find host side of veth pair: %w", err)
 		}
-		hostVeth, ok := hostLink.(*netlink.Veth)
+		hostVeth, ok := hostLink.(*netlink.Macvlan)
 		if !ok {
 			return util.ErrNotVEth
 		}
 
-		ctrIndex, err := netlink.VethPeerIndex(hostVeth)
-		if err != nil {
-			return fmt.Errorf("failed to get container side of veth's index: %w", err)
-		}
+		log.Infof("If: %s: %v", hostName, hostVeth)
 
+		// ctrIndex, err := netlink.VethPeerIndex(hostVeth)
+		// if err != nil {
+		// 	return fmt.Errorf("failed to get container side of veth's index: %w", err)
+		// }
+
+		ctrIndex := hostVeth.Attrs().Index
 		if err := util.AwaitCondition(ctx, func() (bool, error) {
 			m.ctrLink, err = util.AwaitLinkByIndex(ctx, m.netHandle, ctrIndex, pollTime)
 			if err != nil {

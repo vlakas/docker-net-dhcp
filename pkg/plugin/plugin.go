@@ -29,7 +29,7 @@ func IsDHCPPlugin(driver string) bool {
 
 // DHCPNetworkOptions contains options for the DHCP network driver
 type DHCPNetworkOptions struct {
-	Bridge          string
+	Parent          string
 	IPv6            bool
 	LeaseTimeout    time.Duration `mapstructure:"lease_timeout"`
 	IgnoreConflicts bool          `mapstructure:"ignore_conflicts"`
@@ -91,6 +91,7 @@ func NewPlugin(awaitTimeout time.Duration) (*Plugin, error) {
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/Plugin.Activate", p.apiActivate)
 	mux.HandleFunc("/NetworkDriver.GetCapabilities", p.apiGetCapabilities)
 
 	mux.HandleFunc("/NetworkDriver.CreateNetwork", p.apiCreateNetwork)

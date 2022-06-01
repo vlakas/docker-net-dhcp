@@ -41,6 +41,8 @@ func main() {
 		return
 	}
 
+	log.Info(event)
+
 	if err := json.NewEncoder(os.Stdout).Encode(event); err != nil {
 		log.Fatalf("Failed to encode udhcpc event: %w", err)
 		return

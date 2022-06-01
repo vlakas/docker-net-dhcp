@@ -8,6 +8,16 @@ import (
 
 // Payloads are based on https://github.com/docker/go-plugins-helpers/blob/master/network/api.go
 
+type HandshakeResponse struct {
+	Implements []string
+}
+
+func (p *Plugin) apiActivate(w http.ResponseWriter, r *http.Request) {
+	util.JSONResponse(w, HandshakeResponse{
+		Implements: []string{"NetworkDriver"},
+	}, http.StatusOK)
+}
+
 // CapabilitiesResponse returns whether or not this network is global or local
 type CapabilitiesResponse struct {
 	Scope             string

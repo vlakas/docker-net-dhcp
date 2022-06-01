@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -32,7 +31,7 @@ func (p *Plugin) CreateNetwork(r CreateNetworkRequest) error {
 		return fmt.Errorf("failed to decode network options: %w", err)
 	}
 
-	if opts.Bridge == "" {
+	if opts.Parent == "" {
 		return util.ErrBridgeRequired
 	}
 
@@ -42,70 +41,15 @@ func (p *Plugin) CreateNetwork(r CreateNetworkRequest) error {
 		}
 	}
 
-	link, err := netlink.LinkByName(opts.Bridge)
-	if err != nil {
-		return fmt.Errorf("failed to lookup interface %v: %w", opts.Bridge, err)
-	}
-	if link.Type() != "bridge" {
-		return util.ErrNotBridge
-	}
-
-	if !opts.IgnoreConflicts {
-		v4Addrs, err := netlink.AddrList(link, unix.AF_INET)
-		if err != nil {
-			return fmt.Errorf("failed to retrieve IPv4 addresses for %v: %w", opts.Bridge, err)
-		}
-		v6Addrs, err := netlink.AddrList(link, unix.AF_INET6)
-		if err != nil {
-			return fmt.Errorf("failed to retrieve IPv6 addresses for %v: %w", opts.Bridge, err)
-		}
-		bridgeAddrs := append(v4Addrs, v6Addrs...)
-
-		nets, err := p.docker.NetworkList(context.Background(), dTypes.NetworkListOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to retrieve list of networks from Docker: %w", err)
-		}
-
-		// Make sure the addresses on this bridge aren't used by another network
-		for _, n := range nets {
-			if IsDHCPPlugin(n.Driver) {
-				otherOpts, err := decodeOpts(n.Options)
-				if err != nil {
-					log.
-						WithField("network", n.Name).
-						WithError(err).
-						Warn("Failed to parse other DHCP network's options")
-				} else if otherOpts.Bridge == opts.Bridge {
-					return util.ErrBridgeUsed
-				}
-			}
-			if n.IPAM.Driver == "null" {
-				// Null driver networks will have 0.0.0.0/0 which covers any address range!
-				continue
-			}
-
-			for _, c := range n.IPAM.Config {
-				_, dockerCIDR, err := net.ParseCIDR(c.Subnet)
-				if err != nil {
-					return fmt.Errorf("failed to parse subnet %v on Docker network %v: %w", c.Subnet, n.ID, err)
-				}
-				if bytes.Equal(dockerCIDR.Mask, net.CIDRMask(0, 32)) || bytes.Equal(dockerCIDR.Mask, net.CIDRMask(0, 128)) {
-					// Last check to make sure the network isn't 0.0.0.0/0 or ::/0 (which would always pass the check below)
-					continue
-				}
-
-				for _, bridgeAddr := range bridgeAddrs {
-					if bridgeAddr.IPNet.Contains(dockerCIDR.IP) || dockerCIDR.Contains(bridgeAddr.IP) {
-						return util.ErrBridgeUsed
-					}
-				}
-			}
+	if !parentExists(opts.Parent) {
+		if err := createVlanLink(opts.Parent); err != nil {
+			return err
 		}
 	}
 
 	log.WithFields(log.Fields{
 		"network": r.NetworkID,
-		"bridge":  opts.Bridge,
+		"parent":  opts.Parent,
 		"ipv6":    opts.IPv6,
 	}).Info("Network created")
 
@@ -156,57 +100,64 @@ func (p *Plugin) CreateEndpoint(ctx context.Context, r CreateEndpointRequest) (C
 		return res, fmt.Errorf("failed to get network options: %w", err)
 	}
 
-	bridge, err := netlink.LinkByName(opts.Bridge)
+	parent, err := netlink.LinkByName(opts.Parent)
 	if err != nil {
 		return res, fmt.Errorf("failed to get bridge interface: %w", err)
 	}
 
-	hostName, ctrName := vethPairNames(r.EndpointID)
+	// hostName, ctrName := vethPairNames(r.EndpointID)
+	hostName, _ := vethPairNames(r.EndpointID)
 	la := netlink.NewLinkAttrs()
 	la.Name = hostName
-	hostLink := &netlink.Veth{
-		LinkAttrs: la,
-		PeerName:  ctrName,
-	}
+	la.ParentIndex = parent.Attrs().Index
 	if r.Interface.MacAddress != "" {
 		addr, err := net.ParseMAC(r.Interface.MacAddress)
 		if err != nil {
 			return res, util.ErrMACAddress
 		}
 
-		hostLink.PeerHardwareAddr = addr
+		la.HardwareAddr = addr
+	}
+
+	hostLink := &netlink.Macvlan{
+		LinkAttrs: la,
+		Mode:      netlink.MACVLAN_MODE_BRIDGE,
 	}
 
 	if err := netlink.LinkAdd(hostLink); err != nil {
 		return res, fmt.Errorf("failed to create veth pair: %w", err)
 	}
+
+	res.Interface.MacAddress = hostLink.Attrs().HardwareAddr.String()
+
 	if err := func() error {
 		if err := netlink.LinkSetUp(hostLink); err != nil {
 			return fmt.Errorf("failed to set host side link of veth pair up: %w", err)
 		}
 
-		ctrLink, err := netlink.LinkByName(ctrName)
-		if err != nil {
-			return fmt.Errorf("failed to find container side of veth pair: %w", err)
-		}
-		if err := netlink.LinkSetUp(ctrLink); err != nil {
-			return fmt.Errorf("failed to set container side link of veth pair up: %w", err)
-		}
+		// ctrLink, err := netlink.LinkByName(ctrName)
+		// if err != nil {
+		// 	return fmt.Errorf("failed to find container side of veth pair: %w", err)
+		// }
+		// if err := netlink.LinkSetUp(ctrLink); err != nil {
+		// 	return fmt.Errorf("failed to set container side link of veth pair up: %w", err)
+		// }
 
 		// Only write back the MAC address if it wasn't provided to us by libnetwork
-		if r.Interface.MacAddress == "" {
-			// The kernel will often reset a randomly assigned MAC address after actions like LinkSetMaster. We prevent
-			// this behaviour by setting it manually to the random value
-			if err := netlink.LinkSetHardwareAddr(ctrLink, ctrLink.Attrs().HardwareAddr); err != nil {
-				return fmt.Errorf("failed to set container side of veth pair's MAC address: %w", err)
-			}
+		// if r.Interface.MacAddress == "" {
+		// 	// The kernel will often reset a randomly assigned MAC address after actions like LinkSetMaster. We prevent
+		// 	// this behaviour by setting it manually to the random value
+		// 	// if err := netlink.LinkSetHardwareAddr(ctrLink, ctrLink.Attrs().HardwareAddr); err != nil {
+		// 	if err := netlink.LinkSetHardwareAddr(hostLink, hostLink.Attrs().HardwareAddr); err != nil {
+		// 		return fmt.Errorf("failed to set container side of veth pair's MAC address: %w", err)
+		// 	}
 
-			res.Interface.MacAddress = ctrLink.Attrs().HardwareAddr.String()
-		}
+		// 	res.Interface.MacAddress = hostLink.Attrs().HardwareAddr.String()
+		// }
 
-		if err := netlink.LinkSetMaster(hostLink, bridge); err != nil {
-			return fmt.Errorf("failed to attach host side link of veth peer to bridge: %w", err)
-		}
+		// if err := netlink.LinkSetMaster(hostLink, bridge); err != nil {
+		// 	return fmt.Errorf("failed to attach host side link of veth peer to bridge: %w", err)
+		// }
 
 		timeout := defaultLeaseTimeout
 		if opts.LeaseTimeout != 0 {
@@ -221,7 +172,7 @@ func (p *Plugin) CreateEndpoint(ctx context.Context, r CreateEndpointRequest) (C
 			timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 
-			info, err := udhcpc.GetIP(timeoutCtx, ctrName, &udhcpc.DHCPClientOptions{V6: v6})
+			info, err := udhcpc.GetIP(timeoutCtx, hostName, &udhcpc.DHCPClientOptions{V6: v6})
 			if err != nil {
 				return fmt.Errorf("failed to get initial IP%v address via DHCP%v: %w", v6str, v6str, err)
 			}
@@ -295,7 +246,7 @@ func (p *Plugin) EndpointOperInfo(ctx context.Context, r InfoRequest) (InfoRespo
 	}
 
 	info := operInfo{
-		Bridge:      opts.Bridge,
+		Bridge:      opts.Parent,
 		HostVEth:    hostName,
 		HostVEthMAC: hostLink.Attrs().HardwareAddr.String(),
 	}
@@ -420,11 +371,11 @@ func (p *Plugin) Join(ctx context.Context, r JoinRequest) (JoinResponse, error) 
 		return res, fmt.Errorf("failed to get network options: %w", err)
 	}
 
-	_, ctrName := vethPairNames(r.EndpointID)
+	hostName, _ := vethPairNames(r.EndpointID)
 
 	res.InterfaceName = InterfaceName{
-		SrcName:   ctrName,
-		DstPrefix: opts.Bridge,
+		SrcName:   hostName,
+		DstPrefix: opts.Parent,
 	}
 
 	hint, ok := p.joinHints[r.EndpointID]
@@ -443,7 +394,7 @@ func (p *Plugin) Join(ctx context.Context, r JoinRequest) (JoinResponse, error) 
 		res.Gateway = hint.Gateway
 	}
 
-	bridge, err := netlink.LinkByName(opts.Bridge)
+	bridge, err := netlink.LinkByName(opts.Parent)
 	if err != nil {
 		return res, fmt.Errorf("failed to get bridge interface: %w", err)
 	}
