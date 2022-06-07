@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 
 	dTypes "github.com/docker/docker/api/types"
 	"github.com/mitchellh/mapstructure"
@@ -176,6 +177,22 @@ func (p *Plugin) CreateEndpoint(ctx context.Context, r CreateEndpointRequest) (C
 			if err != nil {
 				return fmt.Errorf("failed to get initial IP%v address via DHCP%v: %w", v6str, v6str, err)
 			}
+
+			// TODO fix empty bit mask part of IP.
+			// In some cases we may have IP address CIDR without bit mask part:
+			//     udhcpc -f -i eth0.207 -s /usr/lib/net-dhcp/udhcpc-handler -q -V docker-net-dhcp
+			//         udhcpc: started, v1.30.1
+			//         INFO[0000] {deconfig {  }}
+			//         {"Type":"deconfig","Data":{"IP":"","Gateway":"","Domain":""}}
+			//         udhcpc: sending discover
+			//         udhcpc: sending select for 172.16.70.102
+			//         udhcpc: lease of 172.16.70.102 obtained, lease time 600
+			//         INFO[0000] {bound {172.16.70.102/  }}
+			//         {"Type":"bound","Data":{"IP":"172.16.70.102/","Gateway":"","Domain":""}}
+			if strings.HasSuffix(info.IP, "/") {
+				info.IP = fmt.Sprintf("%s24", info.IP)
+			}
+
 			ip, err := netlink.ParseAddr(info.IP)
 			if err != nil {
 				return fmt.Errorf("failed to parse initial IP%v address: %w", v6str, err)
