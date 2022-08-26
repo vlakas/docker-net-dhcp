@@ -3,7 +3,6 @@ package plugin
 import (
 	"context"
 	"fmt"
-	"net"
 	"strings"
 
 	dTypes "github.com/docker/docker/api/types"
@@ -111,14 +110,15 @@ func (p *Plugin) CreateEndpoint(ctx context.Context, r CreateEndpointRequest) (C
 	la := netlink.NewLinkAttrs()
 	la.Name = hostName
 	la.ParentIndex = parent.Attrs().Index
-	if r.Interface.MacAddress != "" {
-		addr, err := net.ParseMAC(r.Interface.MacAddress)
-		if err != nil {
-			return res, util.ErrMACAddress
-		}
+	// if r.Interface.MacAddress != "" {
+	// 	addr, err := net.ParseMAC(r.Interface.MacAddress)
+	// 	if err != nil {
+	// 		return res, util.ErrMACAddress
+	// 	}
 
-		la.HardwareAddr = addr
-	}
+	// 	// la.HardwareAddr = addr
+	// 	res.Interface.MacAddress = addr.String()
+	// }
 
 	hostLink := &netlink.Macvlan{
 		LinkAttrs: la,
@@ -129,7 +129,7 @@ func (p *Plugin) CreateEndpoint(ctx context.Context, r CreateEndpointRequest) (C
 		return res, fmt.Errorf("failed to create veth pair: %w", err)
 	}
 
-	res.Interface.MacAddress = hostLink.Attrs().HardwareAddr.String()
+	// res.Interface.MacAddress = hostLink.Attrs().HardwareAddr.String()
 
 	if err := func() error {
 		if err := netlink.LinkSetUp(hostLink); err != nil {

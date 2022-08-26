@@ -1,0 +1,5 @@
+#!/bin/bash -e
+
+systemctl stop net-dhcp.service || true
+systemctl disable net-dhcp.service || true
+rm -rf /etc/systemd/system/net-dhcp.service

@@ -1,0 +1,24 @@
+#!/bin/bash -e
+
+cat << EOF > /etc/systemd/system/net-dhcp.service
+[Unit]
+Description=Docker DHCP driver
+Documentation=https://abc.com
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+KillMode=process
+KillSignal=SIGTERM
+ExecStart=/usr/lib/net-dhcp/net-dhcp
+Restart=always
+RestartSec=10
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload && \
+	systemctl enable net-dhcp && \
+		systemctl start net-dhcp.service
