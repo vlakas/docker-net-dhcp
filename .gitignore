@@ -5,3 +5,7 @@
 
 .vscode/
 __pycache__/
+
+*.deb
+package-net-dhcp
+udhcp-handler
