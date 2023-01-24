@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"reflect"
 	"regexp"
 	"time"
 
 	docker "github.com/docker/docker/client"
 	"github.com/gorilla/handlers"
 	"github.com/mitchellh/mapstructure"
+	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 
 	"github.com/devplayer0/docker-net-dhcp/pkg/util"
@@ -34,6 +36,59 @@ type DHCPNetworkOptions struct {
 	LeaseTimeout    time.Duration `mapstructure:"lease_timeout"`
 	IgnoreConflicts bool          `mapstructure:"ignore_conflicts"`
 	SkipRoutes      bool          `mapstructure:"skip_routes"`
+	Subnet          *net.IPNet
+	Gateway         net.IP
+}
+
+func StringToIPHookFunc() mapstructure.DecodeHookFunc {
+	return func(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
+		if f.Kind() != reflect.String {
+			return data, nil
+		}
+
+		switch t {
+		case reflect.TypeOf(net.IPNet{}):
+			ipStr := data.(string)
+
+			if len(ipStr) == 0 {
+				return data, nil
+			}
+
+			_, cidr, err := net.ParseCIDR(ipStr)
+			if err != nil {
+				return data, err
+			}
+
+			log.Debugf("Dis is CIDR: %v %T", cidr, cidr)
+
+			return cidr, nil
+		case reflect.TypeOf(net.IP{}):
+			ipStr := data.(string)
+			if len(ipStr) == 0 {
+				return data, nil
+			}
+
+			ip := net.ParseIP(ipStr)
+			if ip == nil {
+				return data, fmt.Errorf("failed to parse gateway IP address: %v", ipStr)
+			}
+
+			log.Debugf("Dis is IP: %v %T", ip, ip)
+			return ip, nil
+		default:
+			return data, nil
+		}
+
+		// if f.Kind() != reflect.String {
+		// 	return data, nil
+		// }
+		// if t != reflect.TypeOf(time.Duration(5)) {
+		// 	return data, nil
+		// }
+
+		// // Convert it by parsing
+		// return time.ParseDuration(data.(string))
+	}
 }
 
 func decodeOpts(input interface{}) (DHCPNetworkOptions, error) {
@@ -44,6 +99,7 @@ func decodeOpts(input interface{}) (DHCPNetworkOptions, error) {
 		WeaklyTypedInput: true,
 		DecodeHook: mapstructure.ComposeDecodeHookFunc(
 			mapstructure.StringToTimeDurationHookFunc(),
+			StringToIPHookFunc(),
 		),
 	})
 	if err != nil {

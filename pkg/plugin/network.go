@@ -119,7 +119,7 @@ func (p *Plugin) CreateEndpoint(ctx context.Context, r CreateEndpointRequest) (C
 		}
 
 		la.HardwareAddr = addr
-		res.Interface.MacAddress = addr.String()
+		// res.Interface.MacAddress = addr.String()
 	}
 
 	hostLink := &netlink.Macvlan{
@@ -199,7 +199,16 @@ func (p *Plugin) CreateEndpoint(ctx context.Context, r CreateEndpointRequest) (C
 			//         INFO[0000] {bound {172.16.70.102/  }}
 			//         {"Type":"bound","Data":{"IP":"172.16.70.102/","Gateway":"","Domain":""}}
 			if strings.HasSuffix(info.IP, "/") {
-				info.IP = fmt.Sprintf("%s24", info.IP)
+				mask, _ := opts.Subnet.Mask.Size()
+				if mask == 0 {
+					mask = 24
+				}
+
+				if len(info.Gateway) == 0 && len(opts.Gateway.String()) > 0 {
+					info.Gateway = opts.Gateway.String()
+				}
+
+				info.IP = fmt.Sprintf("%s%d", info.IP, mask)
 			}
 
 			ip, err := netlink.ParseAddr(info.IP)
