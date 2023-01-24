@@ -3,7 +3,7 @@
 # Package version for deb package. Must be [0-9]+.[0-9]+.[0-9]+.
 # : "${VERSION="$(git describe | grep -oP '(?<=v)\d+\.\d+\.\d+')"}"
 
-VERSION="0.0.1"
+VERSION="0.1.1"
 
 : "${PKG_ROOT=package-net-dhcp}"
 : "${DEB_NAME=docker-net-dhcp-${VERSION:?}_amd64.deb}"
@@ -47,8 +47,8 @@ EOF
 
 mkdir -p "$PKG_ROOT/usr/lib/net-dhcp"
 
-go build -o "$PKG_ROOT/usr/lib/net-dhcp/net-dhcp" cmd/net-dhcp/main.go
-go build -o "$PKG_ROOT/usr/lib/net-dhcp/udhcpc-handler" cmd/udhcpc-handler/main.go
+CGO_ENABLED=0 go build -o "$PKG_ROOT/usr/lib/net-dhcp/net-dhcp" -ldflags="-extldflags=-static" -trimpath cmd/net-dhcp/main.go
+CGO_ENABLED=0 go build -o "$PKG_ROOT/usr/lib/net-dhcp/udhcpc-handler" -ldflags="-extldflags=-static" -trimpath cmd/udhcpc-handler/main.go
 
 dpkg-deb --build "$PKG_ROOT" && \
 	mv "${PKG_ROOT}.deb" "$DST/$DEB_NAME"

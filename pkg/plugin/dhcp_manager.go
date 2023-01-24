@@ -37,15 +37,18 @@ type dhcpManager struct {
 	stopChan  chan struct{}
 	errChan   chan error
 	errChanV6 chan error
+
+	InterfaceIndex int
 }
 
-func newDHCPManager(docker *docker.Client, r JoinRequest, opts DHCPNetworkOptions) *dhcpManager {
+func newDHCPManager(docker *docker.Client, r JoinRequest, ifIdx int, opts DHCPNetworkOptions) *dhcpManager {
 	return &dhcpManager{
 		docker:  docker,
 		joinReq: r,
 		opts:    opts,
 
-		stopChan: make(chan struct{}),
+		InterfaceIndex: ifIdx,
+		stopChan:       make(chan struct{}),
 	}
 }
 
@@ -251,9 +254,10 @@ func (m *dhcpManager) Start(ctx context.Context) error {
 
 	if err := func() error {
 		hostName, oldCtrName := vethPairNames(m.joinReq.EndpointID)
-		hostLink, err := netlink.LinkByName(hostName)
+		// hostLink, err := netlink.LinkByName(hostName)
+		hostLink, err := netlink.LinkByIndex(m.InterfaceIndex)
 		if err != nil {
-			return fmt.Errorf("failed to find host side of veth pair: %w", err)
+			return fmt.Errorf("failed to find host side of veth pair %s: %w", hostName, err)
 		}
 		hostVeth, ok := hostLink.(*netlink.Macvlan)
 		if !ok {
