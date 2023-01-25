@@ -43,6 +43,12 @@ type DHCPClient struct {
 
 // NewDHCPClient creates a new udhcpc(6) client
 func NewDHCPClient(iface string, opts *DHCPClientOptions) (*DHCPClient, error) {
+	log.WithFields(log.Fields{
+		"if":       iface,
+		"ns":       opts.Namespace,
+		"hostname": opts.Hostname,
+	}).Debug("New DHCP client")
+
 	if opts.HandlerScript == "" {
 		opts.HandlerScript = DefaultHandler
 	}

@@ -410,8 +410,9 @@ func (p *Plugin) Join(ctx context.Context, r JoinRequest) (JoinResponse, error) 
 	hostName, _ := vethPairNames(r.EndpointID)
 
 	res.InterfaceName = InterfaceName{
-		SrcName:   hostName,
-		DstPrefix: opts.Parent,
+		SrcName: hostName,
+		// DstPrefix: opts.Parent,
+		DstPrefix: "eth",
 	}
 
 	hint, ok := p.joinHints[r.EndpointID]

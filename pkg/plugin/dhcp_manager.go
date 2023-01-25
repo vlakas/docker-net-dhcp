@@ -255,7 +255,8 @@ func (m *dhcpManager) Start(ctx context.Context) error {
 	if err := func() error {
 		hostName, oldCtrName := vethPairNames(m.joinReq.EndpointID)
 		// hostLink, err := netlink.LinkByName(hostName)
-		hostLink, err := netlink.LinkByIndex(m.InterfaceIndex)
+		// hostLink, err := netlink.LinkByIndex(m.InterfaceIndex)
+		hostLink, err := m.netHandle.LinkByIndex(m.InterfaceIndex)
 		if err != nil {
 			return fmt.Errorf("failed to find host side of veth pair %s: %w", hostName, err)
 		}
@@ -264,7 +265,7 @@ func (m *dhcpManager) Start(ctx context.Context) error {
 			return util.ErrNotVEth
 		}
 
-		log.Infof("If: %s: %v", hostName, hostVeth)
+		log.Infof("Container interface (DHCP): %s: %v", hostName, hostVeth)
 
 		// ctrIndex, err := netlink.VethPeerIndex(hostVeth)
 		// if err != nil {
