@@ -10,6 +10,7 @@ After=network-online.target
 [Service]
 KillMode=process
 KillSignal=SIGTERM
+ExecStartPre=/usr/lib/net-dhcp/up.sh
 ExecStart=/usr/lib/net-dhcp/net-dhcp
 Restart=always
 RestartSec=10
