@@ -12,13 +12,13 @@ fi
 
 docker network ls -qf 'driver=net-dhcp' | while read -r NET; do
 	PARENT="$(docker inspect --format='{{.Options.parent}}' $NET)"
-	if "$PARENT" == "<no value>"; then
+	if [ "$PARENT" == "<no value>" ]; then
 		1>&2 echo "ERROR Network $NET has not parent."
 		continue
 	fi
 
 	VLAN_ID="$(echo "$PARENT" | grep -oP '(?<=\.)\d+$')"
-	if -z "$VLAN_ID"; then
+	if [ -z "$VLAN_ID" ]; then
 		1>&2 echo "WARNING No VLAN ID for parent interface $PARENT"
 		continue
 	fi

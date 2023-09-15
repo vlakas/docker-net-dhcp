@@ -3,7 +3,7 @@
 # Package version for deb package. Must be [0-9]+.[0-9]+.[0-9]+.
 # : "${VERSION="$(git describe | grep -oP '(?<=v)\d+\.\d+\.\d+')"}"
 
-VERSION="0.1.5"
+VERSION="0.1.6"
 
 : "${PKG_ROOT=package-net-dhcp}"
 : "${DEB_NAME=docker-net-dhcp-${VERSION:?}_amd64.deb}"
