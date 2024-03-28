@@ -42,7 +42,7 @@ Version: $VERSION
 Maintainer: Vladyslav Zakhozhai <vlad@labyrint.tech>
 Architecture: amd64
 Depends: udhcpc
-Description: Labyrint appliances TextUI menu
+Description: Docker DHCP plugin
 EOF
 
 mkdir -p "$PKG_ROOT/usr/lib/net-dhcp"
