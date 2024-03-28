@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log/syslog"
+	"net"
 	"os"
 	"os/signal"
 	"time"
@@ -11,13 +12,14 @@ import (
 	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
 	"golang.org/x/sys/unix"
 
+	"github.com/coreos/go-systemd/activation"
 	"github.com/devplayer0/docker-net-dhcp/pkg/plugin"
 )
 
 var (
 	logLevel = flag.String("log", "", "log level")
 	logFile  = flag.String("logfile", "", "log file")
-	bindSock = flag.String("sock", "/run/docker/plugins/net-dhcp.sock", "bind unix socket")
+	bindSock = flag.String("sock", "", "bind unix socket")
 	nosyslog = flag.Bool("nosyslog", false, "Disable syslog logging")
 	debug    = flag.Bool("debug", false, "Turn on debug logging")
 )
@@ -68,10 +70,33 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, unix.SIGINT, unix.SIGTERM)
 
+	var listener net.Listener
+
+	if len(*bindSock) == 0 {
+		listeners, err := activation.Listeners()
+		if err != nil {
+			log.WithError(err).Fatal("Failed to get socket listener(s) from systemd")
+		}
+
+		if len(listeners) == 0 {
+			log.Fatal("Got 0 listeners from systemd")
+		}
+
+		listener = listeners[0]
+	} else {
+		listener, err = plugin.SocketListener(*bindSock)
+		if err != nil {
+			log.WithError(err).Fatal("Failed to bind to unix socket")
+		}
+	}
+
 	go func() {
-		log.Info("Starting server...")
-		if err := p.Listen(*bindSock); err != nil {
-			log.WithError(err).Fatal("Failed to start plugin")
+		et := log.WithFields(log.Fields{
+			"socket": listener.Addr().String(),
+		})
+		et.Info("Starting server...")
+		if err := p.Listen(listener); err != nil {
+			et.WithError(err).Fatal("Failed to start plugin")
 		}
 	}()
 

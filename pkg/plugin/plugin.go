@@ -20,6 +20,8 @@ import (
 // DriverName is the name of the Docker Network Driver
 const DriverName string = "net-dhcp"
 
+const DEFAULT_UNIX_SOCKET = "/run/docker/plugins/net-dhcp.sock"
+
 const defaultLeaseTimeout = 10 * time.Second
 
 var driverRegexp = regexp.MustCompile(`^ghcr\.io/devplayer0/docker-net-dhcp:.+$`)
@@ -167,13 +169,16 @@ func NewPlugin(awaitTimeout time.Duration) (*Plugin, error) {
 	return &p, nil
 }
 
-// Listen starts the plugin server
-func (p *Plugin) Listen(bindSock string) error {
-	l, err := net.Listen("unix", bindSock)
-	if err != nil {
-		return err
-	}
+func SocketListener(bindSock string) (net.Listener, error) {
+	return net.Listen("unix", bindSock)
+}
 
+func DefaultSocketListener() (net.Listener, error) {
+	return SocketListener(DEFAULT_UNIX_SOCKET)
+}
+
+// Listen starts the plugin server
+func (p *Plugin) Listen(l net.Listener) error {
 	return p.server.Serve(l)
 }
 
